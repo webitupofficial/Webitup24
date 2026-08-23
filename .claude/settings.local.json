@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(git --version)",
+      "WebFetch(domain:webitup24.com)",
+      "Bash(cmd.exe /c \"where node & where npm & node --version & npm --version\")",
+      "Bash(node -e \"1\")",
+      "Bash(python -c ' *)",
+      "Bash(winget install *)",
+      "Bash(\"/c/Program Files/nodejs/node.exe\" --version)",
+      "Bash(\"/c/Program Files/nodejs/npm.cmd\" --version)"
+    ]
+  }
+}

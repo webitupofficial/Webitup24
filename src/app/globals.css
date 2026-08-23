@@ -1,0 +1,656 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+ * WebItUp24 — global stylesheet
+ * =============================================================================
+ *
+ * This file has exactly four jobs, in this order:
+ *
+ *   1. Declare the design tokens `tailwind.config.ts` refers to. Every colour in the config is
+ *      `rgb(var(--c-x) / <alpha-value>)`, so without this file every Tailwind colour utility
+ *      resolves to `rgb(undefined / 1)` — which renders as transparent black, not as an error.
+ *   2. Provide the base document styles Tailwind's preflight deliberately leaves to you.
+ *   3. Own the two things JavaScript toggles but cannot style: the `.lenis` scroll classes and
+ *      the `[data-cursor]` state.
+ *   4. Provide the handful of component-level primitives that are used on every page and would
+ *      otherwise be a copy-pasted string of eight utilities.
+ *
+ * Anything beyond that belongs in a component. A global stylesheet that grows page-specific
+ * rules is a global stylesheet nobody can safely delete from.
+ * ========================================================================== */
+
+@layer base {
+  /* ---------------------------------------------------------------------------
+   * DESIGN TOKENS
+   *
+   * Stored as bare channel triplets — `"200 255 61"`, not `#C8FF3D` and not
+   * `rgb(200 255 61)`. This is a hard requirement of the `<alpha-value>` mechanism in
+   * `tailwind.config.ts`: Tailwind compiles `bg-acid/40` to `rgb(var(--c-acid) / 0.4)`, and
+   * only bare channels are valid inside that function. A hex value here silently breaks every
+   * opacity modifier on the site.
+   *
+   * `src/lib/utils/palette.ts` writes these same variables (as channels) when a case study
+   * overrides the palette, which is why the naming has to stay in lockstep with `TOKEN_VARS`
+   * and `GLOBAL_OVERRIDES` there.
+   * ------------------------------------------------------------------------- */
+  :root {
+    /* --- Neutrals ---------------------------------------------------------- */
+
+    /**
+     * Deepest black. Overlay scrims, the menu backdrop, and text set on an acid or bone fill.
+     * Deliberately not pure #000: a true black next to the canvas' #08080B reads as a visible
+     * patch on OLED displays, where black is genuinely black and the 4-unit difference is not
+     * crushed by backlight bleed.
+     */
+    --c-ink: 4 4 6;
+
+    /**
+     * Page background. #08080B.
+     *
+     * This value is duplicated in `SceneCanvas`'s `gl.setClearColor()` and in the fallback
+     * gradient's base stop. It has to be — the canvas is composited as an opaque layer over
+     * this background, and any mismatch shows up as a hairline seam at the canvas edge and as a
+     * one-frame flash of a different black when the WebGL fallback cross-fades out. If you
+     * change it here, change it in both places there.
+     */
+    --c-surface: 8 8 11;
+
+    /** Cards, inputs, the header's scrolled backdrop. One step up from the page. */
+    --c-elevated: 18 18 24;
+
+    /**
+     * Body and heading colour. #F4F1EA — warm off-white, not #FFF.
+     *
+     * Pure white on near-black is a ~19:1 contrast ratio, which is past the point of diminishing
+     * returns and into the range where the halation around glyph edges makes long-form reading
+     * measurably harder. The warm cast also stops the page reading as clinical next to the
+     * violet/acid accents.
+     */
+    --c-bone: 244 241 234;
+
+    /**
+     * Secondary text: eyebrows, metadata, captions. #8A8A96.
+     *
+     * 5.9:1 against `--c-surface` — comfortably past WCAG AA for normal text, which matters
+     * because "muted" is where accessibility usually goes wrong. It is a genuinely dimmer
+     * colour, not a low-opacity bone, so it stays correct when it sits on `--c-elevated` too.
+     */
+    --c-muted: 138 138 150;
+
+    /* --- Accents ---------------------------------------------------------- */
+
+    /**
+     * Primary. #C8FF3D.
+     *
+     * Luminance ~0.83, so `readableOn()` in palette.ts correctly puts ink-on-acid rather than
+     * bone-on-acid. Never use this as a text colour on top of `--c-elevated` at small sizes —
+     * it vibrates. It is a fill and a rule colour.
+     */
+    --c-acid: 200 255 61;
+
+    /** Counterpoint. #5B2BE8 — matches the shader's `uColorB` and the fallback's violet mass. */
+    --c-violet: 91 43 232;
+
+    /** Third accent, used sparingly: error states, the "unavailable" dot. #FF5E2E. */
+    --c-ember: 255 94 46;
+
+    /**
+     * Borders and dividers. #2A2A34.
+     *
+     * A solid dark grey rather than a translucent white, so `border-hairline` works with no
+     * opacity modifier and — more importantly — so a divider crossing both `--c-surface` and
+     * `--c-elevated` stays one consistent colour instead of shifting where the backgrounds meet.
+     */
+    --c-hairline: 42 42 52;
+
+    /* --- Case-study palette defaults --------------------------------------
+     *
+     * `paletteStyle()` sets these on a wrapper element for projects that author a
+     * `colorPalette`. Declaring defaults here means `var(--case-accent)` is always resolvable,
+     * so a component can use the case palette unconditionally and simply inherit the house
+     * colours when there isn't one. Without these, an unpalette'd project renders those
+     * properties as invalid and the element loses the colour entirely.
+     *
+     * Both forms, matching what palette.ts emits: hex for plain CSS, `-rgb` channels for
+     * anything that needs an alpha modifier.
+     * ------------------------------------------------------------------- */
+    --case-bg: #08080b;
+    --case-bg-rgb: 8 8 11;
+    --case-fg: #f4f1ea;
+    --case-fg-rgb: 244 241 234;
+    --case-accent: #c8ff3d;
+    --case-accent-rgb: 200 255 61;
+    --case-accent-2: #5b2be8;
+    --case-accent-2-rgb: 91 43 232;
+    --case-fg-on-accent: #08080b;
+    --case-shader-a: #5b2be8;
+    --case-shader-b: #c8ff3d;
+    --case-shader-c: #08080b;
+
+    /* --- Layout ----------------------------------------------------------- */
+
+    /**
+     * Header height, as a variable rather than a Tailwind value because three unrelated things
+     * need to agree on it: the header itself, the `scroll-margin-top` on anchor targets (so a
+     * jump-link doesn't land underneath the header), and the hero's `min-height` calculation.
+     */
+    --header-h: 5rem;
+
+    /** Marquee speed. Read by the `marquee-x` animation; per-instance overridable inline. */
+    --marquee-duration: 32s;
+
+    /**
+     * Tells the UA to render form controls, scrollbars and `color-scheme`-aware defaults dark.
+     * Without it, a native `<select>` dropdown, a date picker and the scrollbar gutter all
+     * appear in light mode on an otherwise black page.
+     *
+     * Note this is not the same as Tailwind's `darkMode: 'class'`. The site has exactly one
+     * theme — permanently dark — and the `dark:` variant exists only for the inverted sections
+     * (a bone-background block), where it is applied deliberately rather than by preference.
+     */
+    color-scheme: dark;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * DOCUMENT
+   * ------------------------------------------------------------------------- */
+
+  /**
+   * Tailwind's preflight sets `border-style: solid; border-width: 0` on everything but leaves
+   * `border-color` as `currentColor`, so `border-t` with no colour utility draws a line in the
+   * text colour — a bright bone rule where a hairline was intended. Defaulting it here means
+   * every border is correct by omission.
+   */
+  *,
+  ::before,
+  ::after {
+    border-color: rgb(var(--c-hairline));
+  }
+
+  html {
+    /**
+     * Anchor links and `scrollTo` land below the fixed header rather than under it. This is the
+     * whole reason `--header-h` is a variable — hard-coding the offset in each anchor target is
+     * how it drifts out of sync.
+     */
+    scroll-padding-top: calc(var(--header-h) + 1rem);
+
+    /**
+     * NOT `scroll-behavior: smooth`. Lenis performs real native scrolling
+     * (`window.scrollTo` per frame), and a CSS smooth-scroll behaviour on top of that means the
+     * browser eases toward a target Lenis is simultaneously moving — the two integrators fight
+     * and the result is a slow drift that never quite arrives. The `.lenis-smooth` rule below
+     * enforces this even if something else sets it.
+     */
+
+    /* Stops iOS Safari from inflating text in landscape, which reflows the split-text lines. */
+    -webkit-text-size-adjust: 100%;
+
+    /**
+     * `overscroll-behavior-y: none` disables the rubber-band at the document ends. Worth it
+     * here specifically because the fixed canvas does not rubber-band with the content, so the
+     * bounce visibly separates the background from the page — the layers come apart.
+     */
+    overscroll-behavior-y: none;
+
+    /**
+     * Reserve the scrollbar gutter permanently, whether or not the page currently overflows.
+     *
+     * This exists for the menu overlay. Locking scroll — whatever mechanism does it — removes
+     * the scrollbar, and without a reserved gutter the whole page jumps sideways by its width at
+     * the moment the menu opens. On this layout that reads especially badly: the header and the
+     * canvas are `position: fixed` and do NOT shift, so only the content moves and the two
+     * layers visibly come apart for a frame.
+     *
+     * `stable` rather than `stable both-edges`: the gutter belongs on the scrollbar's own side,
+     * and mirroring it on the left would break the shell's alignment with the header.
+     */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    @apply bg-surface font-sans text-bone antialiased;
+
+    /**
+     * `clip`, not `hidden`. `overflow-x: hidden` on `body` forces `overflow-y` to compute to
+     * `auto`, which makes the body a scroll container: `position: sticky` stops working,
+     * ScrollTrigger's pins measure against the wrong scroller, and Lenis ends up driving a
+     * document that isn't the one scrolling. `clip` suppresses horizontal overflow without
+     * creating a scroll container at all.
+     */
+    overflow-x: clip;
+
+    /**
+     * Belt-and-braces against a horizontal scrollbar appearing from a single overflowing
+     * decorative element on narrow viewports — where it would also shorten the viewport and
+     * change every `100vh` measurement mid-session.
+     */
+    max-width: 100vw;
+
+    /**
+     * Optical sizing and default numeral form. `tnum` (tabular figures) is deliberate: the site
+     * is full of counters, years and indices in narrow columns, and proportional figures make a
+     * column of numbers ragged. Set globally and overridden to `pnum` for body prose below.
+     */
+    font-feature-settings:
+      'kern' 1,
+      'liga' 1,
+      'tnum' 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Prose wants proportional figures — tabular ones look mechanical mid-sentence. */
+  p,
+  li,
+  blockquote {
+    font-feature-settings:
+      'kern' 1,
+      'liga' 1,
+      'pnum' 1;
+  }
+
+  /**
+   * Headings default to the display face and to balanced wrapping.
+   *
+   * `text-wrap: balance` is applied here rather than per-heading because an unbalanced headline
+   * is the single most common way an otherwise finished page looks unfinished — a five-word
+   * headline breaking as four-then-one. The browser caps balancing at a few lines, so there is
+   * no cost on long text.
+   */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
+    text-wrap: balance;
+  }
+
+  /**
+   * Anchor targets clear the fixed header. Applies to `[id]` broadly rather than to a specific
+   * class, because section ids come from CMS content and nobody remembers to add a class.
+   */
+  :where([id]) {
+    scroll-margin-top: calc(var(--header-h) + 2rem);
+  }
+
+  /* ---------------------------------------------------------------------------
+   * SELECTION & FOCUS
+   * ------------------------------------------------------------------------- */
+
+  ::selection {
+    background-color: rgb(var(--c-acid));
+    color: rgb(var(--c-ink));
+  }
+
+  /**
+   * A visible focus ring on everything focusable, with no `:focus` (non-visible) counterpart —
+   * so mouse users never see it and keyboard users always do.
+   *
+   * `:focus-visible` on the *base* layer rather than only on `Button`: the site has links,
+   * cards, video controls and CMS-authored anchors that never pass through a component, and a
+   * focus style that only exists on designed components is a focus style that is missing
+   * exactly where an unfamiliar keyboard user needs it. The `outline-offset` keeps the ring off
+   * the glyphs.
+   */
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-acid));
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /**
+   * Suppress the ring specifically where the component draws its own (Radix and our `Button`
+   * both use a `ring-` treatment that reads better on a filled element). Opt-in via attribute
+   * so it is visible in the markup that focus styling has been taken over, not lost.
+   */
+  [data-focus-ring='custom']:focus-visible {
+    outline: none;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * MEDIA & FORM DEFAULTS
+   * ------------------------------------------------------------------------- */
+
+  img,
+  video,
+  canvas {
+    /**
+     * `display: block` (preflight already does this) plus explicit `max-width` — a `<video>`
+     * from the CMS with intrinsic dimensions wider than its column otherwise overflows and
+     * triggers the horizontal-overflow problem `overflow-x: clip` is papering over above.
+     */
+    max-width: 100%;
+    height: auto;
+  }
+
+  /**
+   * `img` inherits the page's colour scheme for its alt text, and gets a subtle placeholder
+   * while loading so a slow hero image is a soft block rather than a white flash.
+   */
+  img {
+    background-color: rgb(var(--c-elevated) / 0.4);
+  }
+
+  /** A decorative image that is *meant* to be transparent opts out. */
+  img[data-no-placeholder] {
+    background-color: transparent;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /**
+   * Placeholder colour has to be set explicitly: it defaults to a UA grey chosen for light
+   * backgrounds and fails contrast badly on `--c-elevated`.
+   */
+  ::placeholder {
+    color: rgb(var(--c-muted));
+    opacity: 1; /* Firefox applies its own opacity on top of the colour. */
+  }
+
+  /**
+   * Kill the yellow autofill background. `-webkit-autofill` cannot have its
+   * `background-color` overridden directly — the UA style wins — so the standard trick is an
+   * enormous inset box-shadow, which paints over it, plus `-webkit-text-fill-color` for the
+   * text (which `color` also cannot override).
+   */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 1000px rgb(var(--c-elevated)) inset;
+    -webkit-text-fill-color: rgb(var(--c-bone));
+    caret-color: rgb(var(--c-bone));
+    transition: background-color 9999s ease-out 0s;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * SCROLLBAR
+   *
+   * Styled rather than hidden. A hidden scrollbar on a long page removes the only ambient
+   * signal of document length and position, and on a site where the background is a moving
+   * shader that signal is doing real work. `color-scheme: dark` already handles Firefox.
+   * ------------------------------------------------------------------------- */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: rgb(var(--c-ink));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--c-hairline));
+    border: 3px solid rgb(var(--c-ink)); /* Inset the thumb without needing a second element. */
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--c-muted));
+  }
+}
+
+/* =============================================================================
+ * LENIS
+ *
+ * `SmoothScrollProvider` adds/removes `.lenis` on `<html>`; Lenis itself adds
+ * `.lenis-smooth`, `.lenis-scrolling` and `.lenis-stopped`. These rules are the ones Lenis
+ * ships in `lenis/dist/lenis.css`, inlined here with the reasoning, because the package's
+ * stylesheet is one more import to keep in sync with a class we already toggle ourselves —
+ * and because two of these rules are load-bearing in ways that are not obvious.
+ * ========================================================================== */
+
+/**
+ * Lenis measures `scrollHeight` to compute its limit. A `height: 100%` on either element caps
+ * the document at the viewport, Lenis computes a limit of 0, and scrolling appears to be
+ * completely broken with no error anywhere.
+ */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+/**
+ * The critical rule. Lenis drives real native scroll via `window.scrollTo` every frame; if the
+ * UA is also applying `scroll-behavior: smooth`, it eases toward each of those per-frame
+ * targets and the two integrators compound into a scroll that lags seconds behind the wheel.
+ * `!important` because this must beat any author style, including one arriving from CMS content.
+ */
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+/**
+ * Opt-out container for genuinely independent scroll regions — a code block, a long modal, the
+ * Studio. `overscroll-behavior: contain` stops the inner scroll from chaining to the document
+ * once it hits its end, which is what would otherwise hand the gesture back to Lenis mid-swipe.
+ */
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+/** `lenis.stop()` (menu open, modal open) — belt and braces alongside the JS lock. */
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/**
+ * Iframes swallow wheel events: the pointer crosses into an embed and Lenis stops receiving
+ * input, so the page freezes under the cursor. Disabling pointer events *while scrolling only*
+ * keeps the embed interactive when the user is not scrolling.
+ */
+.lenis.lenis-scrolling iframe {
+  pointer-events: none;
+}
+
+/* =============================================================================
+ * CURSOR
+ *
+ * `FluidCursor` is the sole writer of `<html data-cursor>`, and it only sets `"custom"` while
+ * the custom cursor is actually painted and opaque. Everything else — touch devices, reduced
+ * motion, the moment before the first pointer event, any error path, unmount — leaves or
+ * restores `"native"`.
+ *
+ * That invariant is what makes hiding the real cursor safe. `cursor: none` applied on a
+ * condition that could be wrong is one of the worst bugs a site can ship: the visitor has no
+ * pointer at all and no way to recover.
+ * ========================================================================== */
+
+html[data-cursor='custom'],
+html[data-cursor='custom'] body {
+  cursor: none;
+}
+
+/**
+ * The interactive elements need their own rule. Each of these sets a `cursor` value of its own
+ * (`pointer`, `text`, `not-allowed`) which is more specific than an inherited `none`, so
+ * without this the real arrow reappears over every link and button — precisely where the
+ * custom cursor's hover state is meant to be doing the communicating.
+ */
+html[data-cursor='custom'] :where(a, button, [role='button'], label, summary, select, [tabindex]) {
+  cursor: none;
+}
+
+/**
+ * Text inputs and media controls keep the native cursor even in custom mode, and `FluidCursor`
+ * switches itself to the `hidden` mode over them. A caret is functional feedback — it shows
+ * where the insertion point is — and no custom cursor should replace it.
+ */
+html[data-cursor='custom'] :where(input, textarea, [contenteditable='true'], video, audio) {
+  cursor: auto;
+}
+
+/* =============================================================================
+ * COMPONENT PRIMITIVES
+ *
+ * The short list of patterns used on essentially every page. Each one exists because it is
+ * repeated more than three times AND encodes a decision (a max width, a rhythm) that should
+ * change in one place.
+ * ========================================================================== */
+
+@layer components {
+  /**
+   * The page container. Every section's content sits in one of these, which is what keeps the
+   * left edge of the site aligned from the header to the footer.
+   *
+   * `gutter` is a fluid `clamp()` (see the config), so this is one class rather than a
+   * breakpoint ladder — and the horizontal padding is on the container rather than on `body`,
+   * so full-bleed sections can simply not use it.
+   */
+  .shell {
+    @apply mx-auto w-full max-w-shell px-gutter;
+  }
+
+  /** Vertical rhythm. One knob for the whole site's pacing — see `spacing.section`. */
+  .section-y {
+    @apply py-section;
+  }
+
+  /**
+   * The eyebrow/label treatment: mono, tracked out, uppercase, muted. Used above every section
+   * heading and in every metadata row.
+   */
+  .eyebrow {
+    @apply font-mono text-label uppercase text-muted;
+  }
+
+  /**
+   * The header's scrolled backdrop.
+   *
+   * This lives here rather than as Tailwind variants on the component for one reason: the blur
+   * needs an `@supports` guard, and expressing "solid fill, but translucent + blurred where
+   * backdrop-filter exists" as two `data-[scrolled=true]:` utilities would leave the winner
+   * dependent on Tailwind's internal variant sort order. Two rules in a known source order is
+   * deterministic and reviewable.
+   *
+   * Why the guard matters: without it, a browser that ignores `backdrop-filter` renders a 70%
+   * opaque header with the page content legibly showing through it — busy, and on a page of large
+   * display type genuinely hard to read. That browser gets the opaque fill instead.
+   *
+   * `Header.tsx` owns the `data-scrolled` attribute and writes it from a gsap.ticker callback.
+   */
+  .header-shell[data-scrolled='true'] {
+    @apply border-b border-hairline bg-surface;
+  }
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .header-shell[data-scrolled='true'] {
+      @apply bg-surface/70 backdrop-blur-xl;
+    }
+  }
+
+  /**
+   * While the menu is open the bar sits on top of the overlay (`z-header-open`), and the overlay
+   * supplies its own dark surface. The scrolled backdrop must drop here, or its translucent fill
+   * and bottom hairline paint a visible band across the top of the menu. This rule comes after the
+   * two above in source order, so with equal specificity it wins — deliberately, and reviewably.
+   */
+  .header-shell[data-menu-open='true'] {
+    @apply border-transparent bg-transparent backdrop-blur-none;
+  }
+
+  /**
+   * Skip link. Visually hidden until focused, then pinned to the top-left above everything.
+   *
+   * Not `sr-only` + `focus:not-sr-only`: that combination has to re-establish position, size
+   * and clipping on focus and reliably ends up either invisible or shifting the layout. An
+   * off-screen `translate` is one property to undo and cannot affect flow.
+   */
+  .skip-link {
+    @apply fixed left-4 top-4 z-preloader -translate-y-[200%] rounded-full bg-acid px-5 py-3 font-mono text-label uppercase text-ink transition-transform duration-300 ease-expo focus-visible:translate-y-0;
+  }
+
+  /**
+   * Film grain, as a fixed overlay. Sits above the canvas and below the content
+   * (`z-index: 2` — see the config's `zIndex` scale: canvas 1, content 10).
+   *
+   * This is the DOM counterpart to the shader's animated grain, and it covers the parts of the
+   * page the canvas does not: it unifies the WebGL layer and the flat DOM sections into one
+   * image, which is most of why a 3D background reads as *part of* a site rather than as a
+   * video playing behind it.
+   *
+   * `pointer-events: none` is mandatory — this is a full-viewport fixed element.
+   */
+  .grain-overlay {
+    @apply pointer-events-none fixed inset-0 bg-grain opacity-[0.028] mix-blend-overlay;
+    z-index: 2;
+    /* The texture is a 140px tile; repeating is the default but stating it documents intent. */
+    background-repeat: repeat;
+  }
+}
+
+/* =============================================================================
+ * REDUCED MOTION
+ *
+ * The JavaScript layer already handles this properly: `useCapabilities` resolves
+ * `motion: 'none'`, `SmoothScrollProvider` never instantiates Lenis, `SceneCanvas` never
+ * acquires a GL context, and `SplitTextReveal` returns without splitting. This block is the
+ * backstop for the CSS-only motion — hover transitions, keyframe animations, marquees — that
+ * no amount of JS gating touches.
+ *
+ * Note what it does NOT do: the usual recipe is
+ * `* { animation: none !important; transition: none !important }`, which also removes opacity
+ * and colour transitions. Those are not motion. They are how a hover state communicates that
+ * something is interactive, and stripping them makes the site *less* usable for the people
+ * asking for reduced motion. So transforms and keyframes go; fades stay.
+ * ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    /* Every keyframe animation: marquees, pulses, the fade-up entrance. */
+    animation: none !important;
+
+    /**
+     * Restrict transitions to the non-motion properties. Anything transitioning `transform`
+     * now snaps to its end state instead of travelling — which is the correct reduced-motion
+     * behaviour, not a degradation.
+     */
+    transition-property: opacity, color, background-color, border-color, fill, stroke,
+      box-shadow !important;
+    transition-duration: 180ms !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  /**
+   * The grain is static, so it survives — but at this point it is the only texture left over a
+   * flat background, and at full strength it reads as noise rather than as film. Halved.
+   */
+  .grain-overlay {
+    opacity: 0.014;
+  }
+}
+
+/* =============================================================================
+ * PRINT
+ *
+ * Cheap to get right, and someone always prints the contact page. Drop every fixed layer
+ * (they would each print as a full page of black) and invert to ink-on-white.
+ * ========================================================================== */
+
+@media print {
+  .grain-overlay,
+  [data-cursor-root],
+  [data-canvas-root],
+  header,
+  footer {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
